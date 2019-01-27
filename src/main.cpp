@@ -35,7 +35,6 @@ string hasData(string s) {
   return "";
 }
 
-
 // Calculate Euclidian distance between two points.
 double distance(double x1, double y1, double x2, double y2)
 {
@@ -186,43 +185,6 @@ bool lane_clear(int lane, vector<vector<double>> sensor_fusion, int previous_pat
   return clear_to_pass;
 }
 
-// Calculate jerk-minimizing trajectory
-vector<double> JMT(vector<double> start, vector<double> end, double T)
-{
-  // start, end are [s, s-dot, s-dot-dot, d, d-dot, d-dot-dot]
-
-  double T2 = T * T;
-  double T3 = T2 * T;
-  double T4 = T3 * T;
-  double T5 = T4 * T;
-
-  double a0 = start[0];
-  double a1 = start[1];
-  double a2 = start[2]/2;
-
-  double c0 = a0 + a1 * T + a2 * T2;
-  double c1 = a1 + 2 * a2 * T;
-  double c2 = 2 * a2;
-
-  Eigen::MatrixXd A;
-  A <<  T3, T4, T5, 
-        3*T2, 4*T3, 5*T4,
-        6*T, 12*T2, 20*T3;
-  Eigen::VectorXd B;
-  B <<  end[0] - c0, 
-        end[1] - c1, 
-        end[2] - c2;
-  Eigen::VectorXd C = A.colPivHouseholderQr().solve(B);
-  vector<double> Z(6);
-  Z[0] = a0;
-  Z[1] = a1;
-  Z[2] = a2;
-  Z[3] = C[0];
-  Z[4] = C[1];
-  Z[5] = C[2];
-  return Z;
-}
-
 // *** MAIN *** //
 
 int main() {
@@ -262,16 +224,15 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  // Set drive parameters
+  // *** SET UP DRIVE VARIABLES *** //
+
   int lane_number = 1;
   double ref_velocity = 0; // mph
-
-  // Set up drive tracking
   vector<double> last_3_vels(3);
   last_3_vels[0] = 0.0;
   last_3_vels[1] = 0.0;
   last_3_vels[2] = 0.0;
-  double fallback_duration_sec = 5;
+  const double FALLBACK_DURATION_SEC = 5;
   vector<clock_t> last_3_fbs(3);
   clock_t start_time = clock();
   last_3_fbs[0] = start_time;
@@ -279,15 +240,13 @@ int main() {
   last_3_fbs[2] = start_time;
   bool slow_down_mode = false;
   clock_t slow_down_start = start_time;
-  double slow_down_duration_sec = 10;
-
-  // DEBUG
-  cout << CLOCKS_PER_SEC << endl;
+  const double SLOW_DOWN_DURATION_SEC = 10;
 
   // *** DATA FROM SIMULATOR *** //
 
-  h.onMessage([&lane_number,&ref_velocity,&last_3_vels,&fallback_duration_sec,&last_3_fbs,&slow_down_mode,&slow_down_duration_sec,&slow_down_start,
-                &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&lane_number, &ref_velocity, &last_3_vels, &FALLBACK_DURATION_SEC, &last_3_fbs, 
+                &slow_down_mode, &SLOW_DOWN_DURATION_SEC, &slow_down_start,
+                &map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -296,7 +255,7 @@ int main() {
     //cout << sdata << endl;
 
     const double COLLISION_BUFFER = 30;
-    const double PASS_BUFFER_BACKWARD = 20;
+    const double PASSING_BUFFER = 25;
     const double ACCEL_INCREMENT = 0.224; // 2.5 m/s^2
     const double TARGET_VELOCITY = 49.5; // mph
     const int CLOCKS_PER_SEC_CORRECTED = 100000; // built-in value appears to be wrong by 10x
@@ -358,12 +317,12 @@ int main() {
               // From lanes 0 or 2 can only change to lane 1
               if ((lane_number == 0) || (lane_number == 2)) 
               {
-                lane_1_clear = lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASS_BUFFER_BACKWARD);
+                lane_1_clear = lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
               }
               else 
               {
-                lane_0_clear = lane_clear(0, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASS_BUFFER_BACKWARD);
-                lane_2_clear = lane_clear(2, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASS_BUFFER_BACKWARD);
+                lane_0_clear = lane_clear(0, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
+                lane_2_clear = lane_clear(2, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
               }
             } 
           }
@@ -383,33 +342,25 @@ int main() {
             ref_velocity -= ACCEL_INCREMENT;
             if ((lane_number == 0) || (lane_number == 2))
             {
-              if (lane_1_clear)
-              {
-                lane_number = 1;
-              }
+              if (lane_1_clear) lane_number = 1;
             } 
             else 
             {
-              if (lane_0_clear)
-              {
-                lane_number = 0;
-              } else if (lane_2_clear)
-              {
-                lane_number = 2;
-              }
+              if (lane_0_clear) lane_number = 0;
+              else if (lane_2_clear) lane_number = 2;
             }
           }
           else if (slow_down_mode)
           // In "slow down mode" so adjust speed accordingly.
           {
-            if (0.8*TARGET_VELOCITY-ref_velocity>ACCEL_INCREMENT) ref_velocity += ACCEL_INCREMENT;
-            else if (ref_velocity-0.8*TARGET_VELOCITY>ACCEL_INCREMENT) ref_velocity -= ACCEL_INCREMENT;
+            if (0.8*TARGET_VELOCITY-ref_velocity>ACCEL_INCREMENT+0.001) ref_velocity += ACCEL_INCREMENT;
+            else if (ref_velocity-0.8*TARGET_VELOCITY>ACCEL_INCREMENT+0.001) ref_velocity -= ACCEL_INCREMENT;
           }
           else if (ref_velocity < TARGET_VELOCITY)
           {
             ref_velocity += ACCEL_INCREMENT;
           }
-          else if ((lane_number != 1) && lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASS_BUFFER_BACKWARD))
+          else if ((lane_number != 1) && lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER))
           {
             lane_number = 1;
           }
@@ -444,7 +395,7 @@ int main() {
 
             cout << "FB1 dur: " << dfb1 << "; FB2 dur: " << dfb2 << endl;
 
-            if ((!slow_down_mode) && (dfb1 < fallback_duration_sec) && (dfb2 < fallback_duration_sec))
+            if ((!slow_down_mode) && (dfb1 < FALLBACK_DURATION_SEC) && (dfb2 < FALLBACK_DURATION_SEC))
             {
               // fallbacks are close and we are oscillating so go into slow down mode
               slow_down_mode = true;
@@ -457,7 +408,7 @@ int main() {
           if (slow_down_mode)
           {
             double dsdm = (this_time - slow_down_start);
-            if (dsdm > slow_down_duration_sec)
+            if (dsdm > SLOW_DOWN_DURATION_SEC)
             {
               slow_down_mode = false;
               cout << "Exiting slow down mode" << endl;
@@ -469,32 +420,6 @@ int main() {
           // prepare future path vector
         	vector<double> next_x_vals;
         	vector<double> next_y_vals;
-
-          // V1.0 - Straight line
-          /*
-          double step_dist = 0.4;
-          for (int i=0; i < 50; i++) 
-          {
-            next_x_vals.push_back(car_x + i * step_dist * cos(deg2rad(car_yaw)));
-            next_y_vals.push_back(car_y + i * step_dist * sin(deg2rad(car_yaw)));
-          }
-          */
-
-          // V2.0 - Follow lane
-          /*
-          double step_dist = 0.4;
-          for (int i=0; i < 50; i++) 
-          {
-            double next_s = car_s + (i+1)*step_dist;
-            double next_d = 6;
-            vector<double> xy = getXY(next_s,next_d,map_waypoints_s,map_waypoints_x,map_waypoints_y);
-
-            next_x_vals.push_back(xy[0]);
-            next_y_vals.push_back(xy[1]);
-          }
-          */
-
-          // V2.1 - Follow lane with splines
 
           // set up reference values
           double ref_x = car_x;

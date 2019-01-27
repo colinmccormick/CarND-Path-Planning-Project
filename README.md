@@ -1,16 +1,66 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
    
-### Simulator.
+### Goals
+In this project the goal is to safely navigate a car (the "ego vehicle") around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. The simulator provides the ego vehicles's localization and sensor fusion data, as well as a sparse map list of waypoints around the highway. The ego vehicle should:
+* Try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible (other cars will try to change lanes too). 
+* Avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. 
+* Be able to make one complete loop around the 6946m highway. Since the target velocity is 50 MPH, it should take a little over 5 minutes to complete 1 loop. 
+* Not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
+
+### Solution
+
+The ego vehicle is able to successfully navigate around the track at least one time (generally many times).
+
+The entire solution code is in main.cpp, except for the single header file spline.h which was downloaded from http://kluge.in-chemnitz.de/opensource/spline/.
+
+The overall approach is to use a Prediction -> Behavior -> Trajectory cycle for the vehicle. Drive-related variables are defined in lines 229-243, and constants are defined in lines 257-261. 
+
+#### Prediction
+
+In the Prediction module (starting line 295), the algorithm looks through all vehicles included in the sensor fusion information to determine if any are in the current lane ahead of the ego vehicle, within the distance COLLISION_BUFFER (30m). If so, the algorithm begins to consider passing, by examining whether possible passing lanes are clear. When driving in the left or right lanes this is the center lane; while driving in the center lane it is either the left or right lane. "Clear" is defined as a distance of COLLISION_BUFFER ahead and PASSING_BUFFER (20 m) behind.
+
+The determination of whether a given lane is clear is handled by lane_clear() (lines 166-186), which examines each car in the sensor_fusion data to see if it is in the given lane, then projects its current location using its measured velocity, the time increment and the number of previous path steps.
+
+#### Behavior
+
+In the Behavior module (starting line 330), the algorithm first brances on the result of the Prediction module about whether the ego vehicle is too close to a car in front. If so, it decelerates and checks if the appropriate target lane is clear. From the center lane it first tries to pass left, and then right. (Note that modularizing the Prediction and Behavior steps introduce some slight inefficiency, since the Prediction module checks lane clearance for both left and right passing lanes from the center lane, even if the left lane is clear for passing.)
+
+If the ego vehicle is not too close to a leading car but is in slow-down mode, it decelerates or accelerates to match a reduced velocity (80% of the target velocity of 50 mph). This is discussed below.
+
+If the ego vehicle is not too close and not in slow down mode, but is below the target velocity of 50 mph, it accelerates.
+
+Finally, if none of the above conditions apply but the ego vehicle is not in the center lane, it attempts to return there, if it is clear. This reflects the theory that the ego vehicle should normally drive in the center lane to have the best chance of passing traffic in the future.
+
+#### Behavior for Oscillation
+
+The sub-module Behavior for Oscillation (starting line 368) is intended to eliminate a common problem the ego vehicle can experience: getting stuck behind a slow-moving lead car while blocked from passing. In this case the vehicle accelerates and decelerates repeatedly, experiencing oscillating "fallbacks". To get out of this situation, the algorithm tracks these "fallbacks" by recording the last three reference velocities sent to the simulator, and flags a "fallback" as a velocity minimum. These velocity fallbacks are timestamped using std::clock().
+
+Each time a fallback is detected, the separation times between the current and two most recent fallbacks are calculated. If these two time separations are less than FALLBACK_DURATION_SEC (5s) then this is taken as evidence that the oscillating fallbacks are occurring, and the ego vehicle enters "slow-down mode". In this mode, the target velocity drops to 80% of 50 mph (40 mph), which can enable the ego vehicle to "fade back" and eventually be able to pass. This condition lasts for SLOW_DOWN_DURATION_SEC (10s) before returning to normal.
+
+#### Trajectory
+
+In the Trajectory module (starting line 418), the algorithm tries to find the last two points from the previous path, or generates two equivalent points from the ego vehicle's current location and a projection 1 m behind it in the same heading as the ego vehicle's current yaw. The algorithm next calculates three future points, separated by 25 m, in the target lane. Note that if the target lane was changed by the Behavior module, these will be in a different lane.
+
+These five points are transformed into the ego vehicle's reference frame and the spline.h library is used to calculate a spline between them. To determine the appropriate spacing to sample this spline, a "look-ahead distance", the target velocity, and the 50 ms update rate for the simulator are used to calculate the increment. Any points from the previous path that are still ahead of the ego vehicle are added to the updated path, and then the spline is sampled at the appropriate interval at enough points to make a total of 50 for the updated path. This is then transformed back into the map reference frame and sent to the simulator. 
+
+### Results
+
+The ego vehicle is able to navigate all the way around the track successfully, without collisions, road departures, or excessive acceleration or jerk. It successfully changes lanes when too close to a lead vehicle, and successfully returns to the center lane when it is clear.
+
+The sub-module to address fallback oscillations is partly successful. It functions as intended, and in some cases enables the ego vehicle to fall further back and open up passing space to escape a situation where it's blocked from passing. However, this doesn't always work, since the reduced target velocity is 40 mph, and the slowest-moving vehicles on the road match this. To ensure being able to fall back and find a passing zone, it would have to slow even more, but this would risk it being rear-ended. A future extension of this module could include considering this additional slow-down if the lane behind the ego vehicle is clear for an extended distance (although this would not protect against vehicle that change into the lane).
+
+There are also situations where the ego vehicle could potentially speed up over 50 mph to find a passing zone, but these have been disallowed in the current implementation. This could also be part of a future extension.
+
+When hemmed in by slow-moving traffic it completes 4.5 miles in 7:55. When driving in relatively open conditions it completes 4.5 miles in [X].
+
+### Simulator
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).  
 
 To run the simulator on Mac/Linux, first make the binary file executable with the following command:
 ```shell
 sudo chmod u+x {simulator_file_name}
 ```
-
-### Goals
-In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 10 m/s^3.
 
 #### The map of the highway is in data/highway_map.txt
 Each waypoint in the list contains  [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
@@ -91,55 +141,3 @@ A really helpful resource for doing this project and creating smooth trajectorie
     cd uWebSockets
     git checkout e94b6e1
     ```
-
-## Editor Settings
-
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
-
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
-
-## Code Style
-
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
-
-## Project Instructions and Rubric
-
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
-
-
-## Call for IDE Profiles Pull Requests
-
-Help your fellow students!
-
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
-
-## How to write a README
-A well written README file can enhance your project and portfolio.  Develop your abilities to create professional README files by completing [this free course](https://www.udacity.com/course/writing-readmes--ud777).
-
