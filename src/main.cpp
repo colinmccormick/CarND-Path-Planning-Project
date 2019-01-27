@@ -255,7 +255,6 @@ int main() {
     //cout << sdata << endl;
 
     const double COLLISION_BUFFER = 30;
-    const double PASSING_BUFFER = 25;
     const double ACCEL_INCREMENT = 0.224; // 2.5 m/s^2
     const double TARGET_VELOCITY = 49.5; // mph
     const int CLOCKS_PER_SEC_CORRECTED = 100000; // built-in value appears to be wrong by 10x
@@ -317,12 +316,12 @@ int main() {
               // From lanes 0 or 2 can only change to lane 1
               if ((lane_number == 0) || (lane_number == 2)) 
               {
-                lane_1_clear = lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
+                lane_1_clear = lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, COLLISION_BUFFER);
               }
               else 
               {
-                lane_0_clear = lane_clear(0, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
-                lane_2_clear = lane_clear(2, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER);
+                lane_0_clear = lane_clear(0, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, COLLISION_BUFFER);
+                lane_2_clear = lane_clear(2, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, COLLISION_BUFFER);
               }
             } 
           }
@@ -342,12 +341,24 @@ int main() {
             ref_velocity -= ACCEL_INCREMENT;
             if ((lane_number == 0) || (lane_number == 2))
             {
-              if (lane_1_clear) lane_number = 1;
+              if (lane_1_clear) 
+              {
+                lane_number = 1;
+                slow_down_mode = false;
+              }
             } 
             else 
             {
-              if (lane_0_clear) lane_number = 0;
-              else if (lane_2_clear) lane_number = 2;
+              if (lane_0_clear) 
+              {
+                lane_number = 0;
+                slow_down_mode = false;
+              }
+              else if (lane_2_clear) 
+              {
+                lane_number = 2;
+                slow_down_mode = false;
+              }
             }
           }
           else if (slow_down_mode)
@@ -360,7 +371,7 @@ int main() {
           {
             ref_velocity += ACCEL_INCREMENT;
           }
-          else if ((lane_number != 1) && lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, PASSING_BUFFER))
+          else if ((lane_number != 1) && lane_clear(1, sensor_fusion, previous_path_size, car_s, COLLISION_BUFFER, COLLISION_BUFFER))
           {
             lane_number = 1;
           }
@@ -455,7 +466,7 @@ int main() {
           }
 
           // get three future points
-          double spline_future_step = 25; // each point is 25 meters further ahead
+          double spline_future_step = 30; // each point is 25 meters further ahead
           for (int i=0; i < 3; i++) {
             double next_s = car_s + (i+1)*spline_future_step;
             double next_d = 2 + 4*lane_number;

@@ -15,7 +15,7 @@ The ego vehicle is able to successfully navigate around the track at least one t
 
 #### Prediction
 
-In the Prediction module (starting line 295), the algorithm looks through all vehicles included in the sensor fusion information to determine if any are in the current lane ahead of the ego vehicle, within the distance COLLISION_BUFFER (30m). If so, the algorithm begins to consider passing, by examining whether possible passing lanes are clear. When driving in the left or right lanes this is the center lane; while driving in the center lane it is either the left or right lane. "Clear" is defined as a distance of COLLISION_BUFFER ahead and PASSING_BUFFER (25 m) behind.
+In the Prediction module (starting line 295), the algorithm looks through all vehicles included in the sensor fusion information to determine if any are in the current lane ahead of the ego vehicle, within the distance COLLISION_BUFFER (30m). If so, the algorithm begins to consider passing, by examining whether possible passing lanes are clear. When driving in the left or right lanes this is the center lane; while driving in the center lane it is either the left or right lane. "Clear" is defined as a distance of COLLISION_BUFFER ahead and behind.
 
 The determination of whether a given lane is clear is handled by lane_clear() (lines 166-186), which examines each car in the sensor_fusion data to see if it is in the given lane, then projects its current location using its measured velocity, the time increment and the number of previous path steps.
 
@@ -29,15 +29,15 @@ If the ego vehicle is not too close and not in slow down mode, but is below the 
 
 Finally, if none of the above conditions apply but the ego vehicle is not in the center lane, it attempts to return there, if it is clear. This reflects the theory that the ego vehicle should normally drive in the center lane to have the best chance of passing traffic in the future.
 
-#### Behavior for Oscillation
+#### Behavior for suppressing oscillation
 
-The sub-module Behavior for Oscillation (starting line 368) is intended to eliminate a common problem the ego vehicle can experience: getting stuck behind a slow-moving lead car while blocked from passing. In this case the vehicle accelerates and decelerates repeatedly, experiencing oscillating "fallbacks". To get out of this situation, the algorithm tracks these "fallbacks" by recording the last three reference velocities sent to the simulator, and flags a "fallback" as a velocity minimum. These velocity fallbacks are timestamped using std::clock().
+The sub-module Behavior for Oscillation (starting line 379) is intended to eliminate a common problem the ego vehicle can experience: getting stuck behind a slow-moving lead car while blocked from passing. In this case the vehicle accelerates and decelerates repeatedly, experiencing oscillating "fallbacks". To get out of this situation, the algorithm tracks these "fallbacks" by recording the last three reference velocities sent to the simulator, and flags a "fallback" as a velocity minimum. These velocity fallbacks are timestamped using std::clock().
 
-Each time a fallback is detected, the separation times between the current and two most recent fallbacks are calculated. If these two time separations are less than FALLBACK_DURATION_SEC (5s) then this is taken as evidence that the oscillating fallbacks are occurring, and the ego vehicle enters "slow-down mode". In this mode, the target velocity drops to 80% of 50 mph (40 mph), which can enable the ego vehicle to "fade back" and eventually be able to pass. This condition lasts for SLOW_DOWN_DURATION_SEC (10s) before returning to normal.
+Each time a fallback is detected, the separation times between the current and two most recent fallbacks are calculated. If these two time separations are less than FALLBACK_DURATION_SEC (5s) then this is taken as evidence that the oscillating fallbacks are occurring, and the ego vehicle enters "slow-down mode". In this mode, the target velocity drops to 80% of 50 mph (40 mph), which can enable the ego vehicle to "fade back" and eventually be able to pass. This condition lasts for SLOW_DOWN_DURATION_SEC (10s) before returning to normal, or upon making a lane change.
 
 #### Trajectory
 
-In the Trajectory module (starting line 418), the algorithm tries to find the last two points from the previous path, or generates two equivalent points from the ego vehicle's current location and a projection 1 m behind it in the same heading as the ego vehicle's current yaw. The algorithm next calculates three future points, separated by 25 m, in the target lane. Note that if the target lane was changed by the Behavior module, these will be in a different lane.
+In the Trajectory module (starting line 429), the algorithm tries to find the last two points from the previous path, or generates two equivalent points from the ego vehicle's current location and a projection 1 m behind it in the same heading as the ego vehicle's current yaw. The algorithm next calculates three future points, separated by 25 m, in the target lane. Note that if the target lane was changed by the Behavior module, these will be in a different lane.
 
 These five points are transformed into the ego vehicle's reference frame and the spline.h library is used to calculate a spline between them. To determine the appropriate spacing to sample this spline, a "look-ahead distance", the target velocity, and the 50 ms update rate for the simulator are used to calculate the increment. Any points from the previous path that are still ahead of the ego vehicle are added to the updated path, and then the spline is sampled at the appropriate interval at enough points to make a total of 50 for the updated path. This is then transformed back into the map reference frame and sent to the simulator. 
 
@@ -49,7 +49,7 @@ The sub-module to address fallback oscillations is partly successful. It functio
 
 There are also situations where the ego vehicle could potentially speed up over 50 mph to find a passing zone, but these have been disallowed in the current implementation. This could also be part of a future extension.
 
-When hemmed in by slow-moving traffic it completes 4.5 miles in 7:55. When driving in relatively open conditions it completes 4.5 miles in [X].
+When hemmed in by slow-moving traffic it completes 4.5 miles in 7:55. When driving in relatively open conditions it completes 4.5 miles in 5:45.
 
 ### Simulator
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).  
