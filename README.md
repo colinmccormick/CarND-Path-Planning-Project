@@ -2,6 +2,7 @@
 Self-Driving Car Engineer Nanodegree Program
    
 ### Goals
+
 In this project the goal is to safely navigate a car (the "ego vehicle") around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. The simulator provides the ego vehicles's localization and sensor fusion data, as well as a sparse map list of waypoints around the highway. The ego vehicle should:
 * Try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible (other cars will try to change lanes too). 
 * Avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. 
@@ -10,15 +11,11 @@ In this project the goal is to safely navigate a car (the "ego vehicle") around 
 
 ### Solution
 
-The ego vehicle is able to successfully navigate around the track at least one time (generally many times).
-
-The entire solution code is in main.cpp, except for the single header file spline.h which was downloaded from http://kluge.in-chemnitz.de/opensource/spline/.
-
-The overall approach is to use a Prediction -> Behavior -> Trajectory cycle for the vehicle. Drive-related variables are defined in lines 229-243, and constants are defined in lines 257-261. 
+The ego vehicle is able to successfully navigate around the track at least one time (generally many times). The entire solution code is in main.cpp, except for the single header file spline.h which was downloaded from http://kluge.in-chemnitz.de/opensource/spline/. The overall approach is to use a Prediction -> Behavior -> Trajectory cycle for the vehicle. Drive-related variables are defined in lines 229-243, and constants are defined in lines 257-261. 
 
 #### Prediction
 
-In the Prediction module (starting line 295), the algorithm looks through all vehicles included in the sensor fusion information to determine if any are in the current lane ahead of the ego vehicle, within the distance COLLISION_BUFFER (30m). If so, the algorithm begins to consider passing, by examining whether possible passing lanes are clear. When driving in the left or right lanes this is the center lane; while driving in the center lane it is either the left or right lane. "Clear" is defined as a distance of COLLISION_BUFFER ahead and PASSING_BUFFER (20 m) behind.
+In the Prediction module (starting line 295), the algorithm looks through all vehicles included in the sensor fusion information to determine if any are in the current lane ahead of the ego vehicle, within the distance COLLISION_BUFFER (30m). If so, the algorithm begins to consider passing, by examining whether possible passing lanes are clear. When driving in the left or right lanes this is the center lane; while driving in the center lane it is either the left or right lane. "Clear" is defined as a distance of COLLISION_BUFFER ahead and PASSING_BUFFER (25 m) behind.
 
 The determination of whether a given lane is clear is handled by lane_clear() (lines 166-186), which examines each car in the sensor_fusion data to see if it is in the given lane, then projects its current location using its measured velocity, the time increment and the number of previous path steps.
 
